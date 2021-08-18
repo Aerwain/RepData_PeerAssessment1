@@ -1,25 +1,143 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
+title: 'Reproducible Research: Peer Assessment 1'
+output:
   html_document:
-    keep_md: true
+    keep_md: yes
+  pdf_document: default
 ---
 
 
-## Loading and preprocessing the data
+## Loading and preprocessing the data  
 
+```{r}
+fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+download.file(fileUrl,destfile="./activity.zip",method="curl")
+unzip(zipfile="./activity.zip",exdir=".")
+
+df<-read.csv("activity.csv", na.strings = "NA")
+df$date<-as.Date(df$date)
+str(df)
+```
 
 
 ## What is mean total number of steps taken per day?
+### I create a summary table with mean, median and total number of steps per day  
 
+```{r}
+library(dplyr)
+totsteps<-group_by(df, date)
+sumsteps<-summarize(totsteps, steps=mean(steps, na.rm=T))
+sumsteps<-rename(sumsteps, Mean_steps=steps)
+sumsteps<-merge(sumsteps, summarize(totsteps, steps=median(steps, na.rm=T)))
+sumsteps<-rename(sumsteps, Median_steps=steps)
+sumsteps<-merge(sumsteps, summarize(totsteps, steps=sum(steps, na.rm=T)))
+sumsteps<-rename(sumsteps, Sum_steps=steps)
+str(sumsteps)
+
+```
+  
+### I create a histogram of the total number of steps taken each day  
+
+```{r}
+hist(sumsteps$Sum_steps, main = "Total number of steps per day", xlab = "Total number of steps in a day")
+```
+
+### I report a table with mean and median values of steps per day  
+
+```{r}
+subset(sumsteps, select=c(date, Mean_steps, Median_steps))
+```
 
 
 ## What is the average daily activity pattern?
+
+### I group the number of steps per interval and average them
+
+```{r}
+pattern<-group_by(df, interval)
+pattern<-summarize(pattern, steps=mean(steps, na.rm=T))
+str(pattern)
+```
+
+
+### I create a time series plot of the x-minute interval and the average number of steps acen across all days
+
+```{r}
+with(pattern, plot(interval, steps, type="l", main="Average daily activity pattern", xlab="5-minute interval", ylab="Mean number of steps"))
+```
 
 
 
 ## Imputing missing values
 
+### I report the number of rows with missing values in the dataset
 
+```{r}
+nrow(df[!complete.cases(df),])
+```
+### I impute the missing values as the mean of the average values of steps in that day and in that interval; I will check the number of incomplete cases in the new dataframe.
+
+```{r}
+
+imp<-df
+
+for (i in pattern$interval) {
+    imp[imp$interval == i & is.na(imp$steps), ]$steps <-         pattern$steps[pattern$interval == i]
+}
+print(paste("The number of incomplete rows is now ", nrow(imp[!complete.cases(imp),])))
+
+```
+### I create a new summary table with imputed data.
+
+```{r}
+totimpute<-group_by(imp, date)
+sum2<-summarize(totimpute, steps=mean(steps, na.rm=T))
+sum2<-rename(sum2, Mean_steps=steps)
+sum2<-merge(sum2, summarize(totimpute, steps=median(steps, na.rm=T)))
+sum2<-rename(sum2, Median_steps=steps)
+sum2<-merge(sum2, summarize(totimpute, steps=sum(steps, na.rm=T)))
+sum2<-rename(sum2, Sum_steps=steps)
+str(sum2)
+```
+### I create a histogram of the total number of steps taken each day with imputed data
+
+```{r}
+hist(sum2$Sum_steps, main = "Total number of steps per day", xlab = "Total number of steps in a day")
+```
+### I report a table with mean and median values of steps per day and the differences with the previous values
+
+```{r}
+delta<-subset(sum2, select=c(date, Mean_steps, Median_steps))
+delta$difference_Mean<-  sum2$Mean_steps + sumsteps$Mean_steps*(-1)
+delta$difference_Median<- sum2$Median_steps + sumsteps$Median_steps*(-1)
+```
+
+### Except for the days that had no measurements at all, there are no differences in mean and median values per day
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+### I add a new column to the imputed dataset with the weekday and then I make a panel plot with the time series of the 5-minute interval and the average number of steps taken, averaged across all weekdays or weekends.
+```{r}
+imp$Weekday<-weekdays(imp$date)
+imp[imp$Weekday == "lunedì" | imp$Weekday == "martedì" | imp$Weekday == "mercoledì" | imp$Weekday == "giovedì" | imp$Weekday == "venerdì", ]$Weekday <- "weekday"
+imp[imp$Weekday == "sabato" | imp$Weekday == "domenica", ] $Weekday<-"weekend" 
+
+imp$Weekday <- factor(imp$Weekday)
+
+weekend <- summarise(group_by(imp, interval)[imp$Weekday=="weekend", ], steps=mean(steps))
+weekend$day <- "weekend"
+
+weekday <- summarise(group_by(imp, interval)[imp$Weekday=="weekday", ], steps=mean(steps))
+weekday$day <- "weekday"
+
+week<-rbind(weekend, weekday)
+
+
+library(lattice)
+library(png)
+xyplot(steps~interval|day, week, layout=c(1,2), type="l", main="Average Daily Pattern: weekend vs weekday")
+
+
+
+```
+
